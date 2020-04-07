@@ -21,7 +21,7 @@
 
 /*
  * Title: Prototype Code for UV Monitor
- * Author: Connor Van Meter
+ * Authors: Connor Van Meter and Alex Hellenberg
  * EELE 498R - Capstone II
  * 
  */
