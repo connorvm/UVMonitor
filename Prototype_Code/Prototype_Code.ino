@@ -264,42 +264,42 @@ void sendData(){
  * Every 5 sec? Can't remember.
  * 
 //---------------------------------------*/
-int rollingAverage() {
+void rollingAverage() {
   //Rolling Average code here
-  #define A_SIZE 15 //adjust volatility of index values: larger array = less volatility and vice versa
-  double array[A_SIZE]; //array of size 30 to hold the average values
+  #define A_SIZE 30 //adjust volatility of index values: larger array = less volatility and vice versa
+  static double array[A_SIZE]; //array of size 30 to hold the average values
   static int index = 0; //variable to keep track of index in array
   static int t = 0; //variable to determine when we are measuring data
   static float sum; //total uv index measured
   static float average = 0; //average uv index
   static double newReading = 0; //variable to store a new uv index reading
-  
+
+
   if(t == 0) { //if this is our first reading, we need to start at beginning of array
     newReading = uv.readUVI(); //take a new uvi reading
     array[index] = newReading; //the uvi reading is stored in the array
     sum += array[index]; //update the sum with the newly stored uvi reading
-    if(index > 0) {
-      average = sum / (index + 1);
-    }
-    t = 1;
+    average = sum / (index + 1);
+    index++;
+    if(index ==A_SIZE){
+        t = 1;
+        index = 0;
+    }     
   }
   else if(t != 0) {
     newReading = uv.readUVI();
+    sum -=array[index];
     array[index] = newReading;
-    if(index < A_SIZE-1) {
-      sum = sum + array[index] - array[index + 1];
-      average = sum/A_SIZE;
-    }
-    else{
-      sum = sum + array[index] - array[0];
-      average = sum/A_SIZE;
+    sum +=array[index];
+    average = sum/A_SIZE;
+    index++;
+    if(index == A_SIZE){
       index = 0;
     }
   }
-  index++;
   current_index = average;
   sendIndex();
-  return 0;
+}
 }
 
 //-----------------------------------------------UNUSED FUNCTIONS-----------------------------------------//
