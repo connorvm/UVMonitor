@@ -127,7 +127,7 @@ void loop() {
       delay(50);
       tone(A2,2000,80);
     }
-    if(recieved.indexOf("C")>=0){ //connected to bluetooth, recieve date_time in format "ddMMYYhhmmss"
+    if(recieved.indexOf("C")>=0){ //connected to bluetooth, recieve date_time in format "ddMMYYYY"
         tone(A2,1047,80);
         delay(130);
         tone(A2,1319,80);
@@ -135,9 +135,11 @@ void loop() {
         tone(A2,1568,80);
         delay(130);
         tone(A2,2093,80);
-        delay(130);
-        recieved.toCharArray(date_time,15); //This needs to be converted into date and time in an RTC library if possible
+        delay(130); 
         sendExposure();
+    }
+    if(recieved.indexOf("T")>0){ //seconds since start of day
+     
     }
     if(recieved.indexOf("D")>=0){ //stored data request
       sendData();
