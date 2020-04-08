@@ -62,14 +62,14 @@ void setup() {
   Serial.begin(115200);
   //Serial.println("VEML6075 Full Test");
   if (! uv.begin()) {
-    //Serial.println("Failed to communicate with VEML6075 sensor, check wiring?");
+    Serial.println("Failed to communicate with VEML6075 sensor, check wiring?");
   }
-  //Serial.println("Found VEML6075 sensor");
+  Serial.println("Found VEML6075 sensor");
 
   // Set the integration constant
   uv.setIntegrationTime(VEML6075_100MS);
-  // Get the integration constant and print it!
   
+  // Get the integration constant and print it!
   Serial.print("Integration time set to ");
   switch (uv.getIntegrationTime()) {
     case VEML6075_50MS: Serial.print("50"); break;
@@ -183,6 +183,7 @@ int getExposure() {
   current_exposure = index_array[array_count] * 22.5;
   return 0;
 }
+
 //Saves max values inside arrays and determines when the array should increment its index, this happens every amount of save_time which is currently 15 minutes
 void arraySave(){
   static unsigned long lastSample = 0;
