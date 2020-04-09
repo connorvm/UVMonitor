@@ -1,31 +1,23 @@
 /*!
- * @file veml6075_fulltest.ino
- *
- * A complete test of the library API with various settings available
- * 
- * Designed specifically to work with the VEML6075 sensor from Adafruit
- * ----> https://www.adafruit.com/products/3964
- *
- * These sensors use I2C to communicate, 2 pins (SCL+SDA) are required
- * to interface with the breakout.
- *
- * Adafruit invests time and resources providing this open source code,
- * please support Adafruit and open-source hardware by purchasing
- * products from Adafruit!
- *
- * Written by Limor Fried/Ladyada for Adafruit Industries.  
- *
- * MIT license, all text here must be included in any redistribution.
- *
- */
-
-/*
  * Title: Prototype Code for UV Monitor
  * Authors: Connor Van Meter and Alex Hellenberg
  * EELE 498R - Capstone II
  * 
  */
 
+/*! Code for the VEML 6075 Sensor
+ * @file veml6075_fulltest.ino
+ * A complete test of the library API with various settings available
+ * Designed specifically to work with the VEML6075 sensor from Adafruit
+ * ----> https://www.adafruit.com/products/3964
+ * These sensors use I2C to communicate, 2 pins (SCL+SDA) are required
+ * to interface with the breakout.
+ * Adafruit invests time and resources providing this open source code,
+ * please support Adafruit and open-source hardware by purchasing
+ * products from Adafruit!
+ * Written by Limor Fried/Ladyada for Adafruit Industries.  
+ * MIT license, all text here must be included in any redistribution.
+ */
  
 #include <Wire.h>
 #include <EEPROM.h>
@@ -45,18 +37,11 @@ int index_notif_count = 0; //uv index notification counter so time between notif
 unsigned long save_time = 900000; //how long between array saves ms (900000 = 15 minutes)
 char date_time[15];
 
-
-
-
 /*if you want to see the save_time in action change the value to 60000 (1 minute)
  * and uncomment the block of 
  * serial prints at the bottom of the loop. You can watch through the serial monitor when it flips from storing in 
  * index and exposure array [0] and [1]
-  */
-
-
-
-
+ */
 
 void setup() {
   Serial.begin(115200);
@@ -82,30 +67,17 @@ void setup() {
   
   // Set the high dynamic mode
   uv.setHighDynamic(true);
-  // Get the mode
-  /*
-  if (uv.getHighDynamic()) {
-    Serial.println("High dynamic reading mode");
-  } else {
-    Serial.println("Normal dynamic reading mode");
-  }
-  */
+
   // Set the mode
   uv.setForcedMode(false);
-  // Get the mode
-  /*
-  if (uv.getForcedMode()) {
-    Serial.println("Forced reading mode");
-  } else {
-    Serial.println("Continuous reading mode");
-  }
-  */
+  
   // Set the calibration coefficients
   uv.setCoefficients(2.22, 1.33,  // UVA_A and UVA_B coefficients
                      2.95, 1.74,  // UVB_C and UVB_D coefficients
                      0.001461, 0.002591); // UVA and UVB responses
                      
 }
+
 /*---------------Loop--------------------//
 //--------------------------------------*/
 void loop() {
@@ -185,8 +157,14 @@ int getExposure() {
   current_exposure = index_array[array_count] * 22.5;
   return 0;
 }
+/*--------------------------------------------------------------------*/
 
-//Saves max values inside arrays and determines when the array should increment its index, this happens every amount of save_time which is currently 15 minutes
+/*------------arraySave()----------------//
+ * Saves max values inside arrays and 
+ * determines when the array should increment 
+ * its index, this happens every amount 
+ * of save_time which is currently 15 minutes
+ //---------------------------------------*/
 void arraySave(){
   static unsigned long lastSample = 0;
   unsigned long now = millis();
@@ -220,6 +198,7 @@ void arraySave(){
    
   }
 }
+/*--------------------------------------------------------------------*/
 
 //Sends exposure_total over Bluetooth
 void sendExposure(){
@@ -300,7 +279,8 @@ void rollingAverage() {
   current_index = average;
   sendIndex();
 }
-}
+/*--------------------------------------------------------------------*/
+
 
 //-----------------------------------------------UNUSED FUNCTIONS-----------------------------------------//
 /*---------------readSensor---------------//
