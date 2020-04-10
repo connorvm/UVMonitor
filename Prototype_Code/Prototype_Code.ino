@@ -41,12 +41,11 @@ float exposure_array[64]; //16 hours of exposure measurements every 15 min
 float index_array[64]; //MAX EEPROM SPACE IS 255 values
 int array_count = 400; //index of arrays for both uv index and exposure
 int index_notif_count = 0; //uv index notification counter so time between notifications can be changed
-unsigned long save_time = 900000; //how long between array saves ms (900000 = 15 minutes)
+unsigned long save_time = 300000; //how long between arrayTimeCalc checks ms (300000 = 5 minutes)
 unsigned long timeConnected = 0;
 unsigned long dayStart = 0;
 unsigned long now = 0;
-byte flag = 0;
-char date[9];
+unsigned long date;
 
 void setup() {
   Serial.begin(115200);
@@ -70,11 +69,16 @@ void setup() {
                      2.95, 1.74,  // UVB_C and UVB_D coefficients
                      0.001461, 0.002591); // UVA and UVB responses
                      
+  for(int i = 0; i<64; i++){
+    unsigned long Eindex;
+    EEPROM.get(i*4,Eindex);
+    index_array[i] = Eindex;
+    exposure_array[i] = index_array[i]*22.5;
+  }
 }
 /*---------------Loop--------------------//
 //--------------------------------------*/
 void loop() {
-  rollingAverage();
   arraySave();
   
   //receive data from iOS
@@ -102,7 +106,21 @@ void loop() {
         delay(130);
         tone(A2,2093,80);
         delay(130); 
-        received.toCharArray(date,9);
+        date = received.toInt();
+        unsigned long Edate;
+        EEPROM.get(300,Edate);
+        if(Edate == 0){ //midnight rolled over and there could be values recorded from day in EEPROM so leave the index array alone and just replace date
+          EEPROM.put(300,date);
+        }
+        else if(Edate != date){ //new date so clear all arrays and set new date in EEPROM
+          for(int i = 0; i<64; i++){
+            index_array[i] = 0;
+            exposure_array[i] = 0;
+            EEPROM.put(i*4,index_array[i]);
+          }
+          EEPROM.put(300,date);
+        }
+        //if dates are equal only time is updated
         sendExposure();
     }
     if(received.indexOf("T")>=0){ //time in seconds since start of day
@@ -112,7 +130,7 @@ void loop() {
       arrayTimeCalc();
     }
     
-    if(received.indexOf("D")>=0){ //stored data request
+    if(received.indexOf("D")>=0){ //stored data request from iOS
       sendData();
     }
     
@@ -156,8 +174,8 @@ void getExposure() {
 /*------------arraySave()----------------//
  * Saves max values inside arrays and 
  * determines when the array should increment 
- * its index, this happens every amount 
- * of save_time which is currently 15 minutes
+ * its index. Checks current time every save_time
+ * 
  //---------------------------------------*/
 void arraySave(){
   
@@ -166,6 +184,7 @@ void arraySave(){
   static unsigned long lastSample = 0;
   
   if(array_count<64){
+    rollingAverage(); //only get index values if we are within time frame
     if(current_index>index_array[array_count]){
     index_array[array_count] = current_index;//index_array[array_count] represents current maximum index for the 15 minute time period
     getExposure();  //exposure only calculated if new max index detected
@@ -185,29 +204,35 @@ void arraySave(){
     }
   }
   
-  else if(now_var-lastSample>=save_time){
+  if(now_var-lastSample>=save_time){ //every 5 minutes check time and update now within 5:30-9:30
     lastSample += save_time;
-    array_count++;
-    current_index = 0;
-    current_exposure = 0;
-    }
-  }
-  else if(now_var-lastSample >= save_time*22){
-    lastSample += save_time*20;
+    now += save_time/1000;
     arrayTimeCalc();
-    flag = 0;
+    EEPROM.put(array_count*4,index_array[array_count]);
+    }
   }
   //if time is outside 5:30AM - 9:30PM stop saving to array
+  //these statements allow device to continue recording data correctly if power is not lost over multiple days
   else if(array_count == 64){
     now = (millis()-timeConnected)/1000 + dayStart;
-    if (now >= 86400){ //if midnight is reached set now to 0 and clear index array;
-      now = (millis()-timeConnected)/1000 - 86400;
-      flag = 1;
+    if (now >= 86400){ //if midnight is reached set now to 0 and clear arrays
+      now = 0;
+      lastSample = millis();
+      timeConnected = millis(); //simulate connection to iOS by setting timeConnected to current time and dayStart to 0
+      dayStart = 0;
       array_count++;
+      EEPROM.put(300,(unsigned long)0);
       for(int i = 0;i<=array_count; i++){
-        index_array[array_count] = 0;
+        index_array[i] = 0;
+        exposure_array[i] = 0;
+        EEPROM.put(i*4,index_array[i]);
       }
     }
+  }
+  else if(array_count == 65 && now_var-lastSample >= 19800000){ //midnight has been reached look for 5:30AM 
+    lastSample = millis();
+    now = 19800;
+    array_count = 0;
   }
 }
 
@@ -249,8 +274,8 @@ void sendData(){
  * This function gets the rolling average of
  * the UV Index and stores it in an array of size 30.
  * 
- * NEED TO CONFIRM HOW OFTEN TO GET DATA
- * Every 5 sec? Can't remember.
+ * 
+ *
  * 
 //---------------------------------------*/
 void rollingAverage() {
@@ -300,7 +325,7 @@ void arrayTimeCalc(){
             if(now >= 75600){
               if(now >= 76500){
                 if(now >=77400){
-                  // NO STORAGE
+                  array_count = 64;
                 }
                 else{
                   array_count = 63;
