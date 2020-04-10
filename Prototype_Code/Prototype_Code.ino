@@ -7,16 +7,23 @@
 
 /*! Code for the VEML 6075 Sensor
  * @file veml6075_fulltest.ino
+ *
  * A complete test of the library API with various settings available
+ * 
  * Designed specifically to work with the VEML6075 sensor from Adafruit
  * ----> https://www.adafruit.com/products/3964
+ *
  * These sensors use I2C to communicate, 2 pins (SCL+SDA) are required
  * to interface with the breakout.
+ *
  * Adafruit invests time and resources providing this open source code,
  * please support Adafruit and open-source hardware by purchasing
  * products from Adafruit!
+ *
  * Written by Limor Fried/Ladyada for Adafruit Industries.  
+ *
  * MIT license, all text here must be included in any redistribution.
+ *
  */
  
 #include <Wire.h>
@@ -32,16 +39,14 @@ float current_exposure = 0; //current exposure max for the 15 minute time frame
 float exposure_total = 0; //total daily exposure
 float exposure_array[64]; //16 hours of exposure measurements every 15 min 
 float index_array[64]; //MAX EEPROM SPACE IS 255 values
-int array_count = 0; //index of arrays for both uv index and exposure
+int array_count = 400; //index of arrays for both uv index and exposure
 int index_notif_count = 0; //uv index notification counter so time between notifications can be changed
 unsigned long save_time = 900000; //how long between array saves ms (900000 = 15 minutes)
-char date_time[15];
-
-/*if you want to see the save_time in action change the value to 60000 (1 minute)
- * and uncomment the block of 
- * serial prints at the bottom of the loop. You can watch through the serial monitor when it flips from storing in 
- * index and exposure array [0] and [1]
- */
+unsigned long timeConnected = 0;
+unsigned long dayStart = 0;
+unsigned long now = 0;
+byte flag = 0;
+char date[9];
 
 void setup() {
   Serial.begin(115200);
@@ -53,53 +58,42 @@ void setup() {
 
   // Set the integration constant
   uv.setIntegrationTime(VEML6075_100MS);
-  
-  // Get the integration constant and print it!
-  Serial.print("Integration time set to ");
-  switch (uv.getIntegrationTime()) {
-    case VEML6075_50MS: Serial.print("50"); break;
-    case VEML6075_100MS: Serial.print("100"); break;
-    case VEML6075_200MS: Serial.print("200"); break;
-    case VEML6075_400MS: Serial.print("400"); break;
-    case VEML6075_800MS: Serial.print("800"); break;
-  }
-  Serial.println("ms");
-  
+
   // Set the high dynamic mode
   uv.setHighDynamic(true);
 
   // Set the mode
   uv.setForcedMode(false);
-  
+
   // Set the calibration coefficients
   uv.setCoefficients(2.22, 1.33,  // UVA_A and UVA_B coefficients
                      2.95, 1.74,  // UVB_C and UVB_D coefficients
                      0.001461, 0.002591); // UVA and UVB responses
                      
 }
-
 /*---------------Loop--------------------//
 //--------------------------------------*/
 void loop() {
   rollingAverage();
   arraySave();
   
-  //recieve data from iOS
+  //receive data from iOS
   if(Serial.available()){
-    String recieved = Serial.readString();
-    if(recieved.indexOf("E")>=0){ //UV exposure limit recieved
-      exposure_limit = recieved.toFloat();
+    
+    String received = Serial.readString();
+    if(received.indexOf("E")>=0){ //UV exposure limit received
+      exposure_limit = received.toFloat();
       tone(A2,1000,80);
       delay(50);
       tone(A2,2000,80);
     }
-    if(recieved.indexOf("I")>=0){ //UV index limit recieved
-      index_limit = recieved.toFloat();
+    if(received.indexOf("I")>=0){ //UV index limit received
+      index_limit = received.toFloat();
       tone(A2,1000,80);
       delay(50);
       tone(A2,2000,80);
     }
-    if(recieved.indexOf("C")>=0){ //connected to bluetooth, recieve date_time in format "ddMMYYYY"
+    if(received.indexOf("C")>=0){ //connected to bluetooth, receive date_time in format "ddMMYYYY"
         tone(A2,1047,80);
         delay(130);
         tone(A2,1319,80);
@@ -108,14 +102,20 @@ void loop() {
         delay(130);
         tone(A2,2093,80);
         delay(130); 
+        received.toCharArray(date,9);
         sendExposure();
     }
-    if(recieved.indexOf("T")>0){ //seconds since start of day
-     
+    if(received.indexOf("T")>=0){ //time in seconds since start of day
+      dayStart = received.toInt();
+      timeConnected = millis();
+      now = (millis() - timeConnected)/1000 + dayStart;
+      arrayTimeCalc();
     }
-    if(recieved.indexOf("D")>=0){ //stored data request
+    
+    if(received.indexOf("D")>=0){ //stored data request
       sendData();
     }
+    
   }
   
   //adjustable counter to decide how often alarm sounds for index notification
@@ -139,13 +139,6 @@ void loop() {
     else{
       index_notif_count = 0; //Once the current_index is below the limit the counter resets
     }
-    /*Serial.print("In array0:");Serial.println(index_array[0],4);
-    Serial.print("Ex array0:");Serial.println(exposure_array[0],4);
-    Serial.print("In array1:");Serial.println(index_array[1],4);
-    Serial.print("Ex array1:");Serial.println(exposure_array[1],4);
-    Serial.print("Ex total:");Serial.println(exposure_total,4);
-    Serial.print("Exposure:");Serial.println(current_exposure,4);
-    Serial.print("Index:");Serial.println(current_index,4);*/
   delay(1000);
 }
 
@@ -153,9 +146,10 @@ void loop() {
  * This function caluclates the 
  * total UV exposure.
 //---------------------------------------*/
-int getExposure() {
-  current_exposure = index_array[array_count] * 22.5;
-  return 0;
+void getExposure() {
+  if(index_array[array_count]>=0.01){
+    current_exposure = index_array[array_count] * 22.5;
+  }
 }
 /*--------------------------------------------------------------------*/
 
@@ -166,9 +160,12 @@ int getExposure() {
  * of save_time which is currently 15 minutes
  //---------------------------------------*/
 void arraySave(){
+  
+  unsigned long now_var = millis();
+
   static unsigned long lastSample = 0;
-  unsigned long now = millis();
-  if(array_count<=64){
+  
+  if(array_count<64){
     if(current_index>index_array[array_count]){
     index_array[array_count] = current_index;//index_array[array_count] represents current maximum index for the 15 minute time period
     getExposure();  //exposure only calculated if new max index detected
@@ -176,7 +173,7 @@ void arraySave(){
     exposure_total = 0;
     for (int i = 0; i<=array_count; i++){
       exposure_total += exposure_array[i];
-    } 
+    }
     sendExposure();//exposure only sent when 15 minute max is detected
     if(exposure_total>= exposure_limit){
         tone(A2,1047,80);
@@ -187,25 +184,41 @@ void arraySave(){
         delay(130);
     }
   }
-  else if(now-lastSample>=save_time){
+  
+  else if(now_var-lastSample>=save_time){
     lastSample += save_time;
     array_count++;
     current_index = 0;
     current_exposure = 0;
     }
   }
-  else{
-   
+  else if(now_var-lastSample >= save_time*22){
+    lastSample += save_time*20;
+    arrayTimeCalc();
+    flag = 0;
+  }
+  //if time is outside 5:30AM - 9:30PM stop saving to array
+  else if(array_count == 64){
+    now = (millis()-timeConnected)/1000 + dayStart;
+    if (now >= 86400){ //if midnight is reached set now to 0 and clear index array;
+      now = (millis()-timeConnected)/1000 - 86400;
+      flag = 1;
+      array_count++;
+      for(int i = 0;i<=array_count; i++){
+        index_array[array_count] = 0;
+      }
+    }
   }
 }
-/*--------------------------------------------------------------------*/
 
 //Sends exposure_total over Bluetooth
+
+/*--------------------------------------------------------------------*/
 void sendExposure(){
   String string = String(exposure_total,DEC);
   String stringTwo = String(string + "E");
-  char ex_send[16];
-  stringTwo.toCharArray(ex_send,16);
+  char ex_send[17];
+  stringTwo.toCharArray(ex_send,17);
   Serial.write(ex_send);
   delay(100);
 }
@@ -219,20 +232,17 @@ void sendIndex(){
   delay(100);
 }
 
+
 void sendData(){
-  String ar_count = String(String(array_count)+"C");
-  Serial.println(ar_count);
-  char ar_count_send[4];
-  ar_count.toCharArray(ar_count_send,4);
-  Serial.write(ar_count_send);
-  Serial.println();
   for(int i = 0;i<=array_count; i++){
-    char i_send[5]; 
-    String(index_array[i]).toCharArray(i_send,5);
+    char i_send[4]; 
+    String(index_array[i]).toCharArray(i_send,4);
+    i_send[3] = 'D';
     Serial.write(i_send);
-    delayMicroseconds(500);
+    delay(30);
   }
 }
+
 
 
 /*------------rollingAverage--------------//
@@ -281,19 +291,331 @@ void rollingAverage() {
 }
 /*--------------------------------------------------------------------*/
 
-
-//-----------------------------------------------UNUSED FUNCTIONS-----------------------------------------//
-/*---------------readSensor---------------//
- * This function reads raw data from the sensor.
- * getExposure function is not from the VEML sensor.
-//---------------------------------------*/
-/*int readSensor() {
-  Serial.println();
-  Serial.print("Raw UVA reading:  "); Serial.println(uv.readUVA());
-  Serial.print("Raw UVB reading:  "); Serial.println(uv.readUVB());
-  Serial.println("------------------------------------------------------");
-  Serial.print("UV Index reading: "); Serial.println(uv.readUVI());
-  Serial.print("UV Exposure reading: "); Serial.println(getExposure());
-  Serial.println("------------------------------------------------------");
-  return 0;
-}*/
+void arrayTimeCalc(){
+  if(now >= 47700){
+    if(now >= 62100){
+      if(now >= 69300){
+        if(now >= 72900){
+          if(now >= 74700){
+            if(now >= 75600){
+              if(now >= 76500){
+                if(now >=77400){
+                  // NO STORAGE
+                }
+                else{
+                  array_count = 63;
+                }
+              }
+              else{
+                array_count = 62;
+              }
+            }
+            else{
+              array_count = 61;
+            }
+          }
+          else{
+            if(now >= 73800){
+              array_count = 60;
+            }
+            else{
+              array_count = 59;
+            }
+          }
+        }
+        else{
+          if(now >= 71100){
+            if(now >= 72000){
+              array_count = 58;
+            }
+            else{
+              array_count = 57;
+            }
+          }
+          else{
+            if(now >= 70200){
+              array_count = 56;
+            }
+            else{
+              array_count = 55;
+            }
+          }
+        }
+      }
+      else{ //48-56
+        if(now >= 65700){
+          if(now >= 67500){ 
+            if(now >= 68400){
+              array_count = 54;
+            }
+            else{
+              array_count = 53;
+            }
+          }
+          else{//52-54
+            if(now >= 66600){
+              array_count = 52;
+            }
+            else{
+              array_count = 51;
+            }
+          }
+        }
+        else{
+          if(now >= 63900){
+            if(now >= 64800){
+              array_count = 50;
+            }
+            else{
+              array_count = 49;
+            }
+          }
+          else{
+            if(now >= 63000){
+              array_count = 48;
+            }
+            else{
+              array_count = 47;
+            }
+          }
+        }
+      }
+    }
+    else{ //32-48
+      if(now >= 54900){
+        if(now >= 58500){
+          if(now >= 60300){
+            if(now >= 61200){
+              array_count = 46;
+            }
+            else{
+              array_count = 45;
+            }
+          }
+          else{
+            if(now >= 59400){
+              array_count = 44;
+            }
+            else{
+              array_count = 43;
+            }
+          }
+        }
+        else{
+          if (now >= 56700){
+            if(now >= 57600){
+              array_count = 42;
+            }
+            else{
+              array_count = 41;
+            }
+          }
+          else{
+            if(now >= 55800){
+              array_count = 40;
+            }
+            else{
+              array_count = 39;
+            }
+          }
+        }
+      }
+      else{ //32-40
+      if(now >= 51300){
+        if(now >= 53100){
+          if(now >= 54000){
+            array_count = 38;
+          }
+          else{
+            array_count = 37;
+          }
+        }
+        else{
+          if(now >= 52200){
+            array_count = 36;
+          }
+          else{
+            array_count = 35;
+          }
+        }
+      }
+      else{ //32-36
+        if(now >= 49500){
+          if(now >= 50400){
+            array_count = 34;
+          }
+          else{
+            array_count = 33;
+          }
+        }
+        else{ //32-34
+          if(now >= 48600){
+            array_count = 32;
+          }
+          else{
+            array_count = 31;
+          }
+        }
+      }
+    }
+  }
+ }
+  else{ //<32
+    if(now >= 33300){
+      if(now >= 40500){
+        if(now >= 44100){
+          if(now >= 45900){
+            if(now >= 46800){
+              array_count = 30;
+            }
+            else{
+              array_count = 29;
+            }
+          }
+          else{
+            if(now >= 45000){
+              array_count = 28;
+            }
+            else{
+              array_count = 27;
+            }
+          }
+        }
+        else{
+          if(now >= 42300){
+            if(now >= 43200){
+              array_count = 26;
+            }
+            else{
+              array_count = 25;
+            }
+          }
+          else{
+            if(now >= 41400){
+              array_count = 24;
+            }
+            else{
+              array_count = 23;
+            }
+          }
+        }
+      }
+      else{
+        if(now >= 36900){
+          if(now >= 38700){
+            if(now >= 39600){
+              array_count = 22;
+            }
+            else{
+              array_count = 21;
+            }
+          }
+          else{
+            if(now >= 37800){
+              array_count = 20;
+            }
+            else{
+              array_count = 19;
+            }
+          }
+        }
+        else{
+          if(now >= 35100){
+            if(now >= 36000){
+              array_count = 18;
+            }
+            else{
+              array_count = 17;
+            }
+          }
+          else{
+            if(now >= 34200){
+              array_count = 16;
+            }
+            else{
+              array_count = 15;
+            }
+          }
+        }
+      }
+    }
+    else{
+      if(now >= 26100){
+        if(now >= 29700){
+          if(now >= 31500){
+            if(now >= 32400){
+              array_count = 14;
+            }
+            else{
+              array_count = 13;
+            }
+          }
+          else{
+            if(now >= 30600){
+              array_count = 12;
+            }
+            else{
+              array_count = 11;
+            }
+          }
+        }
+        else{
+          if(now >= 27900){
+            if(now >= 28800){
+              array_count = 10;
+            }
+            else{
+              array_count = 9;
+            }
+          }
+          else{
+            if(now >= 27000){
+              array_count = 8;
+            }
+            else{
+              array_count = 7;
+            }
+          }
+        }
+      }
+      else{
+        if(now >= 22500){
+          if(now >= 24300){
+            if(now >= 25200){
+              array_count = 6;
+            }
+            else{
+              array_count = 5;
+            }
+          }
+          else{
+            if(now >= 23400){
+              array_count = 4;
+            }
+            else{
+              array_count = 3;
+            }
+          }
+        }
+        else{
+          if(now >= 20700){
+            if(now >= 21600){
+              array_count = 2;
+            }
+            else{
+              array_count = 1;
+            }
+          }
+          else{
+            if(now >= 19800){
+              array_count = 0;
+            }
+            else{
+              //No recording
+            }
+          }
+        }
+      }
+    }
+  }
+}
