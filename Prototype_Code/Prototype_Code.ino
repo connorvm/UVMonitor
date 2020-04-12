@@ -41,7 +41,7 @@ float exposure_array[64]; //16 hours of exposure measurements every 15 min
 float index_array[64]; //MAX EEPROM SPACE IS 255 values
 int array_count = 400; //index of arrays for both uv index and exposure
 int index_notif_count = 0; //uv index notification counter so time between notifications can be changed
-unsigned long save_time = 300000; //how long between arrayTimeCalc checks ms (300000 = 5 minutes)
+unsigned long save_time = 60000; //how long between arrayTimeCalc checks ms (60000 = 1 minute)
 unsigned long timeConnected = 0;
 unsigned long dayStart = 0;
 unsigned long now = 0;
@@ -210,7 +210,7 @@ void arraySave(){
     }
   }
   
-  if(now_var-lastSample>=save_time){ //every 5 minutes check time and update now within 5:30-9:30
+  if(now_var-lastSample>=save_time){ //every minute check time, update now, and store in EEPROM within 5:30-9:30 EEPROM use if 6666 days with this storage method at minimum
     lastSample += save_time;
     now += save_time/1000;
     arrayTimeCalc();
