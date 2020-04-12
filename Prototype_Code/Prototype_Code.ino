@@ -53,7 +53,7 @@ void setup() {
   if (! uv.begin()) {
     Serial.println("Failed to communicate with VEML6075 sensor, check wiring?");
   }
-  Serial.println("Found VEML6075 sensor");
+  //Serial.println("Found VEML6075 sensor");
 
   // Set the integration constant
   uv.setIntegrationTime(VEML6075_100MS);
@@ -70,11 +70,14 @@ void setup() {
                      0.001461, 0.002591); // UVA and UVB responses
                      
   for(int i = 0; i<64; i++){
-    unsigned long Eindex;
-    EEPROM.get(i*4,Eindex);
+    float Eindex;
+    EEPROM.get(i*sizeof(float),Eindex);
     index_array[i] = Eindex;
     exposure_array[i] = index_array[i]*22.5;
+    exposure_total += exposure_array[i];
   }
+  EEPROM.get(400, index_limit);
+  EEPROM.get(500, exposure_limit);
 }
 /*---------------Loop--------------------//
 //--------------------------------------*/
@@ -90,12 +93,14 @@ void loop() {
       tone(A2,1000,80);
       delay(50);
       tone(A2,2000,80);
+      EEPROM.put(500, exposure_limit);
     }
     if(received.indexOf("I")>=0){ //UV index limit received
       index_limit = received.toFloat();
       tone(A2,1000,80);
       delay(50);
       tone(A2,2000,80);
+      EEPROM.put(400, index_limit);
     }
     if(received.indexOf("C")>=0){ //connected to bluetooth, receive date_time in format "ddMMYYYY"
         tone(A2,1047,80);
@@ -116,7 +121,8 @@ void loop() {
           for(int i = 0; i<64; i++){
             index_array[i] = 0;
             exposure_array[i] = 0;
-            EEPROM.put(i*4,index_array[i]);
+            EEPROM.put(i*sizeof(float),index_array[i]);
+            exposure_total = 0;
           }
           EEPROM.put(300,date);
         }
@@ -208,7 +214,7 @@ void arraySave(){
     lastSample += save_time;
     now += save_time/1000;
     arrayTimeCalc();
-    EEPROM.put(array_count*4,index_array[array_count]);
+    EEPROM.put(array_count*sizeof(float),index_array[array_count]);
     }
   }
   //if time is outside 5:30AM - 9:30PM stop saving to array
@@ -225,7 +231,7 @@ void arraySave(){
       for(int i = 0;i<=array_count; i++){
         index_array[i] = 0;
         exposure_array[i] = 0;
-        EEPROM.put(i*4,index_array[i]);
+        EEPROM.put(i*sizeof(float),index_array[i]);
       }
     }
   }
@@ -259,12 +265,12 @@ void sendIndex(){
 
 
 void sendData(){
-  for(int i = 0;i<=array_count; i++){
+  for(int i = 0;i<64; i++){
     char i_send[4]; 
     String(index_array[i]).toCharArray(i_send,4);
     i_send[3] = 'D';
-    Serial.write(i_send);
-    delay(30);
+    Serial.write(i_send,4);
+    delay(50);
   }
 }
 
